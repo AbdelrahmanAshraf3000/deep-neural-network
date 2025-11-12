@@ -301,9 +301,9 @@ def test_agent(trained_policy_net, config, run):
         "test_avg_duration": avg_duration,
         "test_std_duration": std_duration,
         "test_avg_reward": avg_reward,
-        # Create a histogram of test durations
-        "test_durations_hist": wandb.Histogram(test_episode_durations)
     })
+    for episode,duration in enumerate(test_episode_durations):
+        wandb.log({f"test_episode_{episode}_duration": duration})
     
     # ## WANDB ## Log the recorded video
     video_folder = f"./videos/{run.name}"
@@ -450,16 +450,16 @@ if __name__ == "__main__":
     train(config_pendulum_dqn)
 
     # ------------------------------------------------------------------
-    # Pendulum-v1 — DDQN (discretized)
-    # ------------------------------------------------------------------
-    config_pendulum_ddqn = base_config.copy()
-    config_pendulum_ddqn.update({
-        "ENV_NAME": "Pendulum-v1",
-        "USE_DDQN": True,
-        "LR": 5e-4,
-        "EPS_DECAY": 50000,
-        "NUM_EPISODES": 1500,
-        "MAX_STEPS_PER_EPISODE": 200,
-    })
-    train(config_pendulum_ddqn)
+    # # Pendulum-v1 — DDQN (discretized)
+    # # ------------------------------------------------------------------
+    # config_pendulum_ddqn = base_config.copy()
+    # config_pendulum_ddqn.update({
+    #     "ENV_NAME": "Pendulum-v1",
+    #     "USE_DDQN": True,
+    #     "LR": 5e-4,
+    #     "EPS_DECAY": 50000,
+    #     "NUM_EPISODES": 1500,
+    #     "MAX_STEPS_PER_EPISODE": 200,
+    # })
+    # train(config_pendulum_ddqn)
 
