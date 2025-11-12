@@ -13,10 +13,14 @@ class DiscretizedPendulumWrapper(gym.Wrapper):
         self.bin_values = np.linspace(self.low, self.high, num_bins)
 
     def step(self, action):
-        # Map discrete action index to continuous torque
-        continuous_action = np.array([self.bin_values[action]])
-        obs, reward, terminated, truncated, info = self.env.step(continuous_action)
+        # Ensure 'action' is an integer index
+        if isinstance(action, (np.ndarray, list)):
+            action = int(action[0])
+        # Convert discrete index to continuous torque
+        torque = float(self.bin_values[action])
+        obs, reward, terminated, truncated, info = self.env.step(np.array([torque], dtype=np.float32))
         return obs, reward, terminated, truncated, info
+
 
     def reset(self, **kwargs):
         return self.env.reset(**kwargs)

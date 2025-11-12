@@ -114,9 +114,9 @@ def train(config):
 
 
     if config["ENV_NAME"] == "Pendulum-v1":
-        env = DiscretizedPendulumWrapper(gym.make("Pendulum-v1"))
+        env = DiscretizedPendulumWrapper(gym.make("Pendulum-v1",render_mode="rgb_array"))
     else:
-        env = gym.make(config["ENV_NAME"])
+        env = gym.make(config["ENV_NAME"],render_mode="rgb_array")
 
     
     # Get state and action space dimensions
@@ -237,19 +237,24 @@ def test_agent(trained_policy_net, config, run):
     # --- Video Recording Setup (Step 9) ---
     # Create a new environment, wrapping it with RecordVideo
     # This will record one video of the first test episode
-    video_env = gym.make(config.ENV_NAME, render_mode="rgb_array")
+    # --- Video Recording Setup ---
+    if config["ENV_NAME"] == "Pendulum-v1":
+        base_env = DiscretizedPendulumWrapper(gym.make("Pendulum-v1", render_mode="rgb_array"))
+    else:
+        base_env = gym.make(config["ENV_NAME"], render_mode="rgb_array")
+
     video_env = gym.wrappers.RecordVideo(
-        video_env, 
-        video_folder=f"./videos/{run.name}", 
-        episode_trigger=lambda e: e % 10 == 0 # Record every 10th episode
+        base_env,
+        video_folder=f"./videos/{run.name}",
+        episode_trigger=lambda e: e % 10 == 0  # Record every 10 episodes
     )
-    
+
     # --- Standard Test Setup ---
-    # Create a separate environment for the other 99 tests
     if config["ENV_NAME"] == "Pendulum-v1":
         test_env = DiscretizedPendulumWrapper(gym.make("Pendulum-v1"))
     else:
         test_env = gym.make(config["ENV_NAME"])
+
 
     
     n_actions = test_env.action_space.n
@@ -429,7 +434,7 @@ if __name__ == "__main__":
         "USE_DDQN": False,
         "LR": 5e-4,
         "EPS_DECAY": 40000,
-        "NUM_EPISODES": 1200,
+        "NUM_EPISODES": 500,
         "MAX_STEPS_PER_EPISODE": 200,
     })
     train(config_pendulum_dqn)
