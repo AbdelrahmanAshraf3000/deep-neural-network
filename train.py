@@ -215,7 +215,7 @@ def train(config):
     model_path = f"./{run.name}_model.pth"
     torch.save(policy_net.state_dict(), model_path)
     # ## WANDB ## Save model to wandb
-    wandb.save(model_path)
+    #wandb.save(model_path)
     
     # Close environment
     env.close()
@@ -283,8 +283,11 @@ def test_agent(trained_policy_net, config, run):
             else:
                 state = torch.tensor(observation, dtype=torch.float32, device=device).unsqueeze(0)
         
+        
         test_episode_durations.append(duration)
         test_rewards.append(episode_reward)
+        wandb.log({"test_episode_duration": duration})
+        print(f"Test Episode {i}: Duration: {duration}, Reward: {episode_reward:.2f}")
         
     # Close environments
     video_env.close()
@@ -302,8 +305,7 @@ def test_agent(trained_policy_net, config, run):
         "test_std_duration": std_duration,
         "test_avg_reward": avg_reward,
     })
-    for episode, duration in enumerate(test_episode_durations):
-        wandb.log({"test/episode_duration": duration}, step=episode)
+
 
     
     # ## WANDB ## Log the recorded video
@@ -344,20 +346,20 @@ if __name__ == "__main__":
         "MAX_STEPS_PER_EPISODE": 1000,
     }
 
-    # # ------------------------------------------------------------------
-    # #  CartPole-v1 — DQN    
-    # # ------------------------------------------------------------------
-    # config_cartpole_dqn = base_config.copy()
-    # config_cartpole_dqn.update({
-    #     "ENV_NAME": "CartPole-v1",
-    #     "USE_DDQN": False,
-    #     "LR": 1e-3,
-    #     "EPS_DECAY": 5000,
-    #     "NUM_EPISODES": 400,
-    #     "MAX_STEPS_PER_EPISODE": 500,
-    # })
-    # train(config_cartpole_dqn)
-    # #test was working fine
+    # ------------------------------------------------------------------
+    #  CartPole-v1 — DQN    
+    # ------------------------------------------------------------------
+    config_cartpole_dqn = base_config.copy()
+    config_cartpole_dqn.update({
+        "ENV_NAME": "CartPole-v1",
+        "USE_DDQN": False,
+        "LR": 1e-3,
+        "EPS_DECAY": 5000,
+        "NUM_EPISODES": 400,
+        "MAX_STEPS_PER_EPISODE": 500,
+    })
+    train(config_cartpole_dqn)
+    #test was working fine
 
     # # ------------------------------------------------------------------
     # #  CartPole-v1 — DDQN
@@ -436,19 +438,19 @@ if __name__ == "__main__":
     # train(config_mountaincar_ddqn)
     # #not enough time to test
 
-    # ------------------------------------------------------------------
-    # Pendulum-v1 — DQN (discretized)
-    # ------------------------------------------------------------------
-    config_pendulum_dqn = base_config.copy()
-    config_pendulum_dqn.update({
-        "ENV_NAME": "Pendulum-v1",
-        "USE_DDQN": False,
-        "LR": 5e-4,
-        "EPS_DECAY": 40000,
-        "NUM_EPISODES": 200,
-        "MAX_STEPS_PER_EPISODE": 200,
-    })
-    train(config_pendulum_dqn)
+    # # ------------------------------------------------------------------
+    # # Pendulum-v1 — DQN (discretized)
+    # # ------------------------------------------------------------------
+    # config_pendulum_dqn = base_config.copy()
+    # config_pendulum_dqn.update({
+    #     "ENV_NAME": "Pendulum-v1",
+    #     "USE_DDQN": False,
+    #     "LR": 5e-4,
+    #     "EPS_DECAY": 40000,
+    #     "NUM_EPISODES": 200,
+    #     "MAX_STEPS_PER_EPISODE": 200,
+    # })
+    # train(config_pendulum_dqn)
 
     # ------------------------------------------------------------------
     # # Pendulum-v1 — DDQN (discretized)
