@@ -153,8 +153,8 @@ def train(config):
         episode_reward = 0
         episode_steps = 0
         episode_loss = []
-        
-        while True: # Limit episode length
+
+        for t in range(config.MAX_STEPS_PER_EPISODE): # Limit episode length
             episode_steps += 1
             total_steps += 1
             
