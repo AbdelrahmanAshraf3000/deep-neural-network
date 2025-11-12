@@ -39,64 +39,57 @@ def select_action(state, policy_net, n_actions, epsilon):
 
 def optimize_model(memory, policy_net, target_net, optimizer, config):
     """Performs one step of optimization on the policy network."""
-    if len(memory) < config['BATCH_SIZE']:
-        return # Don't train if memory is smaller than batch size
+    if len(memory) < config.BATCH_SIZE:
+        return None  # Not enough samples
 
-    # Sample a batch of transitions
-    transitions = memory.sample(config['BATCH_SIZE'])
-    # Transpose the batch (see https://stackoverflow.com/a/19343/3343043)
+    transitions = memory.sample(config.BATCH_SIZE)
     batch = Transition(*zip(*transitions))
 
-    # Unpack the batch
+    # Prepare batches
     state_batch = torch.cat(batch.state)
     action_batch = torch.cat(batch.action)
-    reward_batch = torch.cat(batch.reward)
-    next_state_batch = torch.cat([s for s in batch.next_state if s is not None])
-    
-    # Create a mask for non-final states
-    non_final_mask = torch.tensor(tuple(s is not None for s in batch.next_state), device=device, dtype=torch.bool)
+    reward_batch = torch.tensor(batch.reward, device=device, dtype=torch.float32)  # shape: (BATCH_SIZE,)
+    non_final_mask = torch.tensor(tuple(s is not None for s in batch.next_state),
+                                device=device, dtype=torch.bool)
 
-    # Compute Q(s_t, a)
-    # The model computes Q(s_t), then we select the columns of actions taken
-    state_action_values = policy_net(state_batch).gather(1, action_batch)
-
-    # --- This is the CORE of DQN/DDQN ---
-    
-    # Compute V(s_{t+1}) for all next states.
-    next_state_values = torch.zeros(config['BATCH_SIZE'], device=device)
-    
-    if config['USE_DDQN']:
-        # --- DDQN ---
-        # 1. Select action with the policy network: argmax_a Q_policy(s', a)
-        best_actions = policy_net(next_state_batch).max(1)[1].unsqueeze(1)
-        # 2. Evaluate that action with the target network: Q_target(s', argmax_a Q_policy(s', a))
-        with torch.no_grad():
-            next_state_values[non_final_mask] = target_net(next_state_batch).gather(1, best_actions).squeeze(1)
+    # Build next_state_batch only if any non-final
+    if non_final_mask.any():
+        next_state_batch = torch.cat([s for s in batch.next_state if s is not None])
     else:
-        # --- Standard DQN ---
-        # Get the max Q-value for the next state from the target network
-        # V(s_{t+1}) = max_a Q_target(s', a)
-        with torch.no_grad():
-            next_state_values[non_final_mask] = target_net(next_state_batch).max(1)[0]
-            
-    # ------------------------------------
+        next_state_batch = None
 
-    # Compute the expected Q values (TD Target)
-    # y_t = r + γ * V(s_{t+1})
-    expected_state_action_values = (next_state_values * config['GAMMA']) + reward_batch
+    # Compute current Q values
+    state_action_values = policy_net(state_batch).gather(1, action_batch)  # shape: (BATCH_SIZE, 1)
 
-    # Compute loss (e.g., Smooth L1 Loss or MSE Loss)
+    # Compute V(s_{t+1})
+    next_state_values = torch.zeros(config.BATCH_SIZE, device=device)
+
+    if next_state_batch is not None:
+        if config.USE_DDQN:
+            # DDQN: action selection by policy_net, evaluation by target_net
+            with torch.no_grad():
+                best_actions = policy_net(next_state_batch).max(1)[1].unsqueeze(1)
+                next_vals = target_net(next_state_batch).gather(1, best_actions).squeeze(1)
+                next_state_values[non_final_mask] = next_vals
+        else:
+            with torch.no_grad():
+                next_vals = target_net(next_state_batch).max(1)[0]
+                next_state_values[non_final_mask] = next_vals
+
+    # TD target
+    expected_state_action_values = (next_state_values * config.GAMMA) + reward_batch
+
+    # Loss
     criterion = nn.SmoothL1Loss()
     loss = criterion(state_action_values, expected_state_action_values.unsqueeze(1))
 
-    # Optimize the model
     optimizer.zero_grad()
     loss.backward()
-    # In-place gradient clipping to stabilize training
     torch.nn.utils.clip_grad_value_(policy_net.parameters(), 100)
     optimizer.step()
-    
-    return loss.item() # Return loss for logging
+
+    return loss.item()
+
 
 
 def train(config):
@@ -106,7 +99,7 @@ def train(config):
     run = wandb.init(
         project="rl-classic-control", 
         config=config,
-        name=f"{config['ENV_NAME']}_{'DDQN' if config['USE_DDQN'] else 'DQN'}_{time.strftime('%Y%m%d-%H%M%S')}"
+        name=f"{config.ENV_NAME}_{'DDQN' if config.USE_DDQN else 'DQN'}_{time.strftime('%Y%m%d-%H%M%S')}"
     )
     
     # Get configuration from wandb object
@@ -116,7 +109,7 @@ def train(config):
     if config["ENV_NAME"] == "Pendulum-v1":
         env = DiscretizedPendulumWrapper(gym.make("Pendulum-v1",render_mode="rgb_array"))
     else:
-        env = gym.make(config["ENV_NAME"],render_mode="rgb_array")
+        env = gym.make(config.ENV_NAME,render_mode="rgb_array")
 
     
     # Get state and action space dimensions
@@ -154,7 +147,7 @@ def train(config):
         episode_steps = 0
         episode_loss = []
 
-        for t in range(config.MAX_STEPS_PER_EPISODE): # Limit episode length
+        while True: # Limit episode length
             episode_steps += 1
             total_steps += 1
             
@@ -166,10 +159,10 @@ def train(config):
             observation, reward, terminated, truncated, _ = env.step(action.item())
             
             episode_reward += reward
-            reward = torch.tensor([reward], device=device)
-            done = terminated or truncated
+            done = terminated or truncated or (episode_steps >= config.MAX_STEPS_PER_EPISODE)
+            
 
-            if terminated:
+            if done:
                 next_state = None
             else:
                 next_state = torch.tensor(observation, dtype=torch.float32, device=device).unsqueeze(0)
@@ -247,12 +240,12 @@ def test_agent(trained_policy_net, config, run):
     os.makedirs(f"./videos/{run.name}", exist_ok=True)
 
     # --- Create and wrap environment ---
-    if config["ENV_NAME"] == "Pendulum-v1":
+    if config.ENV_NAME == "Pendulum-v1":
         base_env = DiscretizedPendulumWrapper(
             gym.make("Pendulum-v1", render_mode="rgb_array")
         )
     else:
-        base_env = gym.make(config["ENV_NAME"], render_mode="rgb_array")
+        base_env = gym.make(config.ENV_NAME, render_mode="rgb_array")
 
     video_env = gym.wrappers.RecordVideo(
         base_env,
@@ -275,14 +268,14 @@ def test_agent(trained_policy_net, config, run):
         duration = 0
         episode_reward = 0.0
         
-        while not (terminated or truncated):
+        while True:
             duration += 1
             # Run the agent with epsilon = 0 (pure exploitation)
             action = select_action(state, trained_policy_net, n_actions, epsilon=0.0)
             observation, reward, terminated, truncated, _ = video_env.step(action.item())
-            episode_reward += reward
-            
-            if terminated or truncated:
+            episode_reward += reward   
+            done = terminated or truncated or (duration >= config.MAX_STEPS_PER_EPISODE)   
+            if done:
                 break
             else:
                 state = torch.tensor(observation, dtype=torch.float32, device=device).unsqueeze(0)
@@ -333,7 +326,6 @@ def test_agent(trained_policy_net, config, run):
     
 
 if __name__ == "__main__":
-    import wandb
     wandb.login()  # optional, for W&B logging
 
     # --- Base configuration template ---
