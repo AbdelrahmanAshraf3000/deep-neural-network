@@ -320,7 +320,7 @@ if __name__ == "__main__":
     }
 
     # ------------------------------------------------------------------
-    #  CartPole-v1 — DQN
+    #  CartPole-v1 — DQN    
     # ------------------------------------------------------------------
     config_cartpole_dqn = base_config.copy()
     config_cartpole_dqn.update({
@@ -332,6 +332,7 @@ if __name__ == "__main__":
         "MAX_STEPS_PER_EPISODE": 500,
     })
     train(config_cartpole_dqn)
+    #test was working fine
 
     # ------------------------------------------------------------------
     #  CartPole-v1 — DDQN
@@ -346,6 +347,7 @@ if __name__ == "__main__":
         "MAX_STEPS_PER_EPISODE": 500,
     })
     train(config_cartpole_ddqn)
+    #test was so bad
 
     # ------------------------------------------------------------------
     #  Acrobot-v1 — DQN
@@ -360,6 +362,7 @@ if __name__ == "__main__":
         "MAX_STEPS_PER_EPISODE": 500,
     })
     train(config_acrobot_dqn)
+    #test was good
 
     # ------------------------------------------------------------------
     #  Acrobot-v1 — DDQN
@@ -374,6 +377,7 @@ if __name__ == "__main__":
         "MAX_STEPS_PER_EPISODE": 500,
     })
     train(config_acrobot_ddqn)
+    #test was better
 
     # ------------------------------------------------------------------
     #  MountainCar-v0 — DQN
@@ -389,6 +393,7 @@ if __name__ == "__main__":
         "BATCH_SIZE": 256,
     })
     train(config_mountaincar_dqn)
+    # test was good
 
     # ------------------------------------------------------------------
     #  MountainCar-v0 — DDQN
