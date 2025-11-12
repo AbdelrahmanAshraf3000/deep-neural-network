@@ -7,3 +7,6 @@ __pycache__/
 videos/
 wandb/
 .env
+
+# Ignore model files
+*_model.pth
