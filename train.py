@@ -143,6 +143,8 @@ def train(config):
 
     print(f"Starting training for {config.NUM_EPISODES} episodes...")
 
+    total_steps = 0
+
     # Main training loop
     for i_episode in range(config.NUM_EPISODES):
         state, info = env.reset()
@@ -154,9 +156,10 @@ def train(config):
         
         while True: # Limit episode length
             episode_steps += 1
+            total_steps += 1
             
             # Linearly decay epsilon
-            epsilon = max(config.EPS_END, config.EPS_START - (config.EPS_START - config.EPS_END) * (episode_steps / config.EPS_DECAY))
+            epsilon = max(config.EPS_END, config.EPS_START - (config.EPS_START - config.EPS_END) * (total_steps / config.EPS_DECAY))
             
             # Select and perform an action
             action = select_action(state, policy_net, n_actions, epsilon)
