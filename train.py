@@ -241,7 +241,7 @@ def test_agent(trained_policy_net, config, run):
     video_env = gym.wrappers.RecordVideo(
         video_env, 
         video_folder=f"./videos/{run.name}", 
-        episode_trigger=lambda e: e == 0 # Record only the first episode
+        episode_trigger=lambda e: e % 10 == 0 # Record every 10th episode
     )
     
     # --- Standard Test Setup ---
@@ -254,6 +254,7 @@ def test_agent(trained_policy_net, config, run):
     
     n_actions = test_env.action_space.n
     test_episode_durations = []
+    test_rewards = []
 
     for i in range(100):
         # Use the correct env (video env for first ep, test env for others)
@@ -265,19 +266,22 @@ def test_agent(trained_policy_net, config, run):
         terminated = False
         truncated = False
         duration = 0
+        episode_reward = 0.0
         
         while not (terminated or truncated):
             duration += 1
             # Run the agent with epsilon = 0 (pure exploitation)
             action = select_action(state, trained_policy_net, n_actions, epsilon=0.0)
             observation, reward, terminated, truncated, _ = env_to_use.step(action.item())
-
+            episode_reward += reward
+            
             if terminated or truncated:
                 break
             else:
                 state = torch.tensor(observation, dtype=torch.float32, device=device).unsqueeze(0)
         
         test_episode_durations.append(duration)
+        test_rewards.append(episode_reward)
         
     # Close environments
     video_env.close()
@@ -286,18 +290,23 @@ def test_agent(trained_policy_net, config, run):
     # Log results to W&B
     avg_duration = np.mean(test_episode_durations)
     std_duration = np.std(test_episode_durations)
-    print(f"Testing complete. Avg Duration: {avg_duration:.2f} +/- {std_duration:.2f}")
+    avg_reward = np.mean(test_rewards)
+    print(f"Testing complete. Avg Reward over 100 episodes: {avg_reward:.2f}")
+    print(f"Testing complete. Avg Duration: {avg_duration:.2f} +/- {std_duration:.2f} ")
 
     # ## WANDB ## Log test statistics
     wandb.log({
         "test_avg_duration": avg_duration,
         "test_std_duration": std_duration,
+        "test_avg_reward": avg_reward,
         # Create a histogram of test durations
         "test_durations_hist": wandb.Histogram(test_episode_durations)
     })
     
     # ## WANDB ## Log the recorded video
-    wandb.log({"video": wandb.Video(f"./videos/{run.name}/rl-video-episode-0.mp4", fps=4, format="mp4")})
+    for e in range(10):
+        video_path = f"./videos/{run.name}/rl-video-episode-{e * 10}-step-0-to-step-*.mp4"
+        wandb.log({f"test_video_episode_{e * 10}": wandb.Video(video_path, caption=f"Test Episode {e * 10}", fps=4, format="mp4")})
     
     
 
@@ -319,96 +328,97 @@ if __name__ == "__main__":
         "MAX_STEPS_PER_EPISODE": 1000,
     }
 
-    # ------------------------------------------------------------------
-    #  CartPole-v1 — DQN    
-    # ------------------------------------------------------------------
-    config_cartpole_dqn = base_config.copy()
-    config_cartpole_dqn.update({
-        "ENV_NAME": "CartPole-v1",
-        "USE_DDQN": False,
-        "LR": 1e-3,
-        "EPS_DECAY": 5000,
-        "NUM_EPISODES": 400,
-        "MAX_STEPS_PER_EPISODE": 500,
-    })
-    train(config_cartpole_dqn)
-    #test was working fine
+    # # ------------------------------------------------------------------
+    # #  CartPole-v1 — DQN    
+    # # ------------------------------------------------------------------
+    # config_cartpole_dqn = base_config.copy()
+    # config_cartpole_dqn.update({
+    #     "ENV_NAME": "CartPole-v1",
+    #     "USE_DDQN": False,
+    #     "LR": 1e-3,
+    #     "EPS_DECAY": 5000,
+    #     "NUM_EPISODES": 400,
+    #     "MAX_STEPS_PER_EPISODE": 500,
+    # })
+    # train(config_cartpole_dqn)
+    # #test was working fine
 
-    # ------------------------------------------------------------------
-    #  CartPole-v1 — DDQN
-    # ------------------------------------------------------------------
-    config_cartpole_ddqn = base_config.copy()
-    config_cartpole_ddqn.update({
-        "ENV_NAME": "CartPole-v1",
-        "USE_DDQN": True,
-        "LR": 5e-4,
-        "EPS_DECAY": 8000,
-        "NUM_EPISODES": 400,
-        "MAX_STEPS_PER_EPISODE": 500,
-    })
-    train(config_cartpole_ddqn)
-    #test was so bad
+    # # ------------------------------------------------------------------
+    # #  CartPole-v1 — DDQN
+    # # ------------------------------------------------------------------
+    # config_cartpole_ddqn = base_config.copy()
+    # config_cartpole_ddqn.update({
+    #     "ENV_NAME": "CartPole-v1",
+    #     "USE_DDQN": True,
+    #     "LR": 5e-4,
+    #     "EPS_DECAY": 8000,
+    #     "NUM_EPISODES": 400,
+    #     "MAX_STEPS_PER_EPISODE": 500,
+    # })
+    # train(config_cartpole_ddqn)
+    # #test was so bad
 
-    # ------------------------------------------------------------------
-    #  Acrobot-v1 — DQN
-    # ------------------------------------------------------------------
-    config_acrobot_dqn = base_config.copy()
-    config_acrobot_dqn.update({
-        "ENV_NAME": "Acrobot-v1",
-        "USE_DDQN": False,
-        "LR": 1e-3,
-        "EPS_DECAY": 25000,
-        "NUM_EPISODES": 1200,
-        "MAX_STEPS_PER_EPISODE": 500,
-    })
-    train(config_acrobot_dqn)
-    #test was good
+    # # ------------------------------------------------------------------
+    # #  Acrobot-v1 — DQN
+    # # ------------------------------------------------------------------
+    # config_acrobot_dqn = base_config.copy()
+    # config_acrobot_dqn.update({
+    #     "ENV_NAME": "Acrobot-v1",
+    #     "USE_DDQN": False,
+    #     "LR": 1e-3,
+    #     "EPS_DECAY": 25000,
+    #     "NUM_EPISODES": 1200,
+    #     "MAX_STEPS_PER_EPISODE": 500,
+    # })
+    # train(config_acrobot_dqn)
+    # #test was good
 
-    # ------------------------------------------------------------------
-    #  Acrobot-v1 — DDQN
-    # ------------------------------------------------------------------
-    config_acrobot_ddqn = base_config.copy()
-    config_acrobot_ddqn.update({
-        "ENV_NAME": "Acrobot-v1",
-        "USE_DDQN": True,
-        "LR": 1e-3,
-        "EPS_DECAY": 30000,
-        "NUM_EPISODES": 1500,
-        "MAX_STEPS_PER_EPISODE": 500,
-    })
-    train(config_acrobot_ddqn)
-    #test was better
+    # # ------------------------------------------------------------------
+    # #  Acrobot-v1 — DDQN
+    # # ------------------------------------------------------------------
+    # config_acrobot_ddqn = base_config.copy()
+    # config_acrobot_ddqn.update({
+    #     "ENV_NAME": "Acrobot-v1",
+    #     "USE_DDQN": True,
+    #     "LR": 1e-3,
+    #     "EPS_DECAY": 30000,
+    #     "NUM_EPISODES": 1500,
+    #     "MAX_STEPS_PER_EPISODE": 500,
+    # })
+    # train(config_acrobot_ddqn)
+    # #test was better
 
-    # ------------------------------------------------------------------
-    #  MountainCar-v0 — DQN
-    # ------------------------------------------------------------------
-    config_mountaincar_dqn = base_config.copy()
-    config_mountaincar_dqn.update({
-        "ENV_NAME": "MountainCar-v0",
-        "USE_DDQN": False,
-        "LR": 1e-3,
-        "EPS_DECAY": 60000,              # slower decay = more exploration
-        "NUM_EPISODES": 2500,
-        "MAX_STEPS_PER_EPISODE": 200,
-        "BATCH_SIZE": 256,
-    })
-    train(config_mountaincar_dqn)
-    # test was good
+    # # ------------------------------------------------------------------
+    # #  MountainCar-v0 — DQN
+    # # ------------------------------------------------------------------
+    # config_mountaincar_dqn = base_config.copy()
+    # config_mountaincar_dqn.update({
+    #     "ENV_NAME": "MountainCar-v0",
+    #     "USE_DDQN": False,
+    #     "LR": 1e-3,
+    #     "EPS_DECAY": 60000,              # slower decay = more exploration
+    #     "NUM_EPISODES": 2500,
+    #     "MAX_STEPS_PER_EPISODE": 200,
+    #     "BATCH_SIZE": 256,
+    # })
+    # train(config_mountaincar_dqn)
+    # # test was good
 
-    # ------------------------------------------------------------------
-    #  MountainCar-v0 — DDQN
-    # ------------------------------------------------------------------
-    config_mountaincar_ddqn = base_config.copy()
-    config_mountaincar_ddqn.update({
-        "ENV_NAME": "MountainCar-v0",
-        "USE_DDQN": True,
-        "LR": 1e-3,
-        "EPS_DECAY": 80000,
-        "NUM_EPISODES": 3000,
-        "MAX_STEPS_PER_EPISODE": 200,
-        "BATCH_SIZE": 256,
-    })
-    train(config_mountaincar_ddqn)
+    # # ------------------------------------------------------------------
+    # #  MountainCar-v0 — DDQN
+    # # ------------------------------------------------------------------
+    # config_mountaincar_ddqn = base_config.copy()
+    # config_mountaincar_ddqn.update({
+    #     "ENV_NAME": "MountainCar-v0",
+    #     "USE_DDQN": True,
+    #     "LR": 1e-3,
+    #     "EPS_DECAY": 80000,
+    #     "NUM_EPISODES": 3000,
+    #     "MAX_STEPS_PER_EPISODE": 200,
+    #     "BATCH_SIZE": 256,
+    # })
+    # train(config_mountaincar_ddqn)
+    # #not enough time to test
 
     # ------------------------------------------------------------------
     # Pendulum-v1 — DQN (discretized)
