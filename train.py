@@ -310,7 +310,7 @@ def test_agent(trained_policy_net, config, run):
     
     # ## WANDB ## Log the recorded video
     for e in range(10):
-        video_path = f"./videos/{run.name}/rl-video-episode-{e * 10}-step-0-to-step-*.mp4"
+        video_path = f"./videos/{run.name}/rl-video-episode-{e * 10}.mp4"
         wandb.log({f"test_video_episode_{e * 10}": wandb.Video(video_path, caption=f"Test Episode {e * 10}", fps=4, format="mp4")})
     
     
@@ -434,7 +434,7 @@ if __name__ == "__main__":
         "USE_DDQN": False,
         "LR": 5e-4,
         "EPS_DECAY": 40000,
-        "NUM_EPISODES": 500,
+        "NUM_EPISODES": 200,
         "MAX_STEPS_PER_EPISODE": 200,
     })
     train(config_pendulum_dqn)
