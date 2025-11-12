@@ -138,7 +138,7 @@ def train(config):
     # Initialize epsilon for epsilon-greedy policy
     epsilon = config.EPS_START
     
-    total_steps = 0
+    
     all_episode_rewards = [] # For logging
 
     print(f"Starting training for {config.NUM_EPISODES} episodes...")
@@ -149,13 +149,14 @@ def train(config):
         state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
         
         episode_reward = 0
+        episode_steps = 0
         episode_loss = []
         
-        for t in range(config.MAX_STEPS_PER_EPISODE): # Limit episode length
-            total_steps += 1
+        while True: # Limit episode length
+            episode_steps += 1
             
             # Linearly decay epsilon
-            epsilon = max(config.EPS_END, config.EPS_START - (config.EPS_START - config.EPS_END) * (total_steps / config.EPS_DECAY))
+            epsilon = max(config.EPS_END, config.EPS_START - (config.EPS_START - config.EPS_END) * (episode_steps / config.EPS_DECAY))
             
             # Select and perform an action
             action = select_action(state, policy_net, n_actions, epsilon)
@@ -203,11 +204,11 @@ def train(config):
             "avg_reward_100": avg_reward,
             "avg_loss": avg_loss,
             "epsilon": epsilon,
-            "total_steps": total_steps
+            "total_steps": episode_steps
         })
 
         if i_episode % 20 == 0:
-            print(f"Episode {i_episode}: Reward: {episode_reward:.2f}, Avg Reward (100): {avg_reward:.2f}, Epsilon: {epsilon:.3f}, Steps: {total_steps}")
+            print(f"Episode {i_episode}: Reward: {episode_reward:.2f}, Avg Reward (100): {avg_reward:.2f}, Epsilon: {epsilon:.3f}, Steps: {episode_steps}, Avg Loss: {avg_loss:.4f}")
             
     print("Training complete.")
     
