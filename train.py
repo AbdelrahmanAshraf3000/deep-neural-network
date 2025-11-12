@@ -302,8 +302,9 @@ def test_agent(trained_policy_net, config, run):
         "test_std_duration": std_duration,
         "test_avg_reward": avg_reward,
     })
-    for episode,duration in enumerate(test_episode_durations):
-        wandb.log({f"test_episode_{episode}_duration": duration})
+    for episode, duration in enumerate(test_episode_durations):
+        wandb.log({"test/episode_duration": duration}, step=episode)
+
     
     # ## WANDB ## Log the recorded video
     video_folder = f"./videos/{run.name}"
