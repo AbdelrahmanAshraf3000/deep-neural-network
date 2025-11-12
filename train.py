@@ -1,0 +1,359 @@
+import gymnasium as gym
+import math
+import random
+import matplotlib.pyplot as plt
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import torch.nn.functional as F
+from collections import namedtuple, deque
+import time
+import numpy as np
+
+# Import the classes we just defined
+from model import QNetwork
+from replay_memory import ReplayMemory, Transition
+
+# Import wandb
+import wandb # ## WANDB ##
+
+# Set up device (use GPU if available, otherwise CPU)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Using device: {device}")
+
+
+def select_action(state, policy_net, n_actions, epsilon):
+    """Selects an action using an epsilon-greedy policy."""
+    sample = random.random()
+    if sample > epsilon:
+        # Exploitation: Choose the best action from the Q-network
+        with torch.no_grad():
+            # .max(1) returns (values, indices)
+            return policy_net(state).max(1)[1].view(1, 1)
+    else:
+        # Exploration: Choose a random action
+        return torch.tensor([[random.randrange(n_actions)]], device=device, dtype=torch.long)
+
+
+def optimize_model(memory, policy_net, target_net, optimizer, config):
+    """Performs one step of optimization on the policy network."""
+    if len(memory) < config['BATCH_SIZE']:
+        return # Don't train if memory is smaller than batch size
+
+    # Sample a batch of transitions
+    transitions = memory.sample(config['BATCH_SIZE'])
+    # Transpose the batch (see https://stackoverflow.com/a/19343/3343043)
+    batch = Transition(*zip(*transitions))
+
+    # Unpack the batch
+    state_batch = torch.cat(batch.state)
+    action_batch = torch.cat(batch.action)
+    reward_batch = torch.cat(batch.reward)
+    next_state_batch = torch.cat([s for s in batch.next_state if s is not None])
+    
+    # Create a mask for non-final states
+    non_final_mask = torch.tensor(tuple(s is not None for s in batch.next_state), device=device, dtype=torch.bool)
+
+    # Compute Q(s_t, a)
+    # The model computes Q(s_t), then we select the columns of actions taken
+    state_action_values = policy_net(state_batch).gather(1, action_batch)
+
+    # --- This is the CORE of DQN/DDQN ---
+    
+    # Compute V(s_{t+1}) for all next states.
+    next_state_values = torch.zeros(config['BATCH_SIZE'], device=device)
+    
+    if config['USE_DDQN']:
+        # --- DDQN ---
+        # 1. Select action with the policy network: argmax_a Q_policy(s', a)
+        best_actions = policy_net(next_state_batch).max(1)[1].unsqueeze(1)
+        # 2. Evaluate that action with the target network: Q_target(s', argmax_a Q_policy(s', a))
+        with torch.no_grad():
+            next_state_values[non_final_mask] = target_net(next_state_batch).gather(1, best_actions).squeeze(1)
+    else:
+        # --- Standard DQN ---
+        # Get the max Q-value for the next state from the target network
+        # V(s_{t+1}) = max_a Q_target(s', a)
+        with torch.no_grad():
+            next_state_values[non_final_mask] = target_net(next_state_batch).max(1)[0]
+            
+    # ------------------------------------
+
+    # Compute the expected Q values (TD Target)
+    # y_t = r + γ * V(s_{t+1})
+    expected_state_action_values = (next_state_values * config['GAMMA']) + reward_batch
+
+    # Compute loss (e.g., Smooth L1 Loss or MSE Loss)
+    criterion = nn.SmoothL1Loss()
+    loss = criterion(state_action_values, expected_state_action_values.unsqueeze(1))
+
+    # Optimize the model
+    optimizer.zero_grad()
+    loss.backward()
+    # In-place gradient clipping to stabilize training
+    torch.nn.utils.clip_grad_value_(policy_net.parameters(), 100)
+    optimizer.step()
+    
+    return loss.item() # Return loss for logging
+
+
+def train(config):
+    """Main training loop."""
+    
+    # ## WANDB ## Initialize a new run
+    run = wandb.init(
+        project="rl-classic-control", 
+        config=config,
+        name=f"{config['ENV_NAME']}_{'DDQN' if config['USE_DDQN'] else 'DQN'}_{time.strftime('%Y%m%d-%H%M%S')}"
+    )
+    
+    # Get configuration from wandb object
+    config = wandb.config
+
+    # Create the environment
+    env = gym.make(config.ENV_NAME)
+    
+    # Get state and action space dimensions
+    n_observations = env.observation_space.shape[0]
+    n_actions = env.action_space.n
+
+    # Initialize networks
+    policy_net = QNetwork(n_observations, n_actions).to(device)
+    target_net = QNetwork(n_observations, n_actions).to(device)
+    target_net.load_state_dict(policy_net.state_dict())
+    target_net.eval() # Set target network to evaluation mode
+
+    # Initialize optimizer
+    optimizer = optim.AdamW(policy_net.parameters(), lr=config.LR, amsgrad=True)
+    
+    # Initialize replay memory
+    memory = ReplayMemory(config.MEMORY_SIZE)
+
+    # Initialize epsilon for epsilon-greedy policy
+    epsilon = config.EPS_START
+    
+    total_steps = 0
+    all_episode_rewards = [] # For logging
+
+    print(f"Starting training for {config.NUM_EPISODES} episodes...")
+
+    # Main training loop
+    for i_episode in range(config.NUM_EPISODES):
+        state, info = env.reset()
+        state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
+        
+        episode_reward = 0
+        episode_loss = []
+        
+        for t in range(config.MAX_STEPS_PER_EPISODE): # Limit episode length
+            total_steps += 1
+            
+            # Linearly decay epsilon
+            epsilon = max(config.EPS_END, config.EPS_START - (config.EPS_START - config.EPS_END) * (total_steps / config.EPS_DECAY))
+            
+            # Select and perform an action
+            action = select_action(state, policy_net, n_actions, epsilon)
+            observation, reward, terminated, truncated, _ = env.step(action.item())
+            
+            episode_reward += reward
+            reward = torch.tensor([reward], device=device)
+            done = terminated or truncated
+
+            if terminated:
+                next_state = None
+            else:
+                next_state = torch.tensor(observation, dtype=torch.float32, device=device).unsqueeze(0)
+
+            # Store the transition in memory
+            memory.push(state, action, next_state, reward, done)
+
+            # Move to the next state
+            state = next_state
+
+            # Perform one step of the optimization (on the policy network)
+            loss = optimize_model(memory, policy_net, target_net, optimizer, config)
+            if loss is not None:
+                episode_loss.append(loss)
+
+            # Soft update of the target network's weights
+            # θ_target = τ*θ_policy + (1 - τ)*θ_target
+            target_net_state_dict = target_net.state_dict()
+            policy_net_state_dict = policy_net.state_dict()
+            for key in policy_net_state_dict:
+                target_net_state_dict[key] = policy_net_state_dict[key]*config.TAU + target_net_state_dict[key]*(1-config.TAU)
+            target_net.load_state_dict(target_net_state_dict)
+
+            if done:
+                break
+        
+        all_episode_rewards.append(episode_reward)
+        avg_reward = np.mean(all_episode_rewards[-100:]) # Moving avg of last 100 episodes
+        avg_loss = np.mean(episode_loss) if episode_loss else 0
+
+        # ## WANDB ## Log metrics
+        wandb.log({
+            "episode": i_episode,
+            "episode_reward": episode_reward,
+            "avg_reward_100": avg_reward,
+            "avg_loss": avg_loss,
+            "epsilon": epsilon,
+            "total_steps": total_steps
+        })
+
+        if i_episode % 20 == 0:
+            print(f"Episode {i_episode}: Reward: {episode_reward:.2f}, Avg Reward (100): {avg_reward:.2f}, Epsilon: {epsilon:.3f}, Steps: {total_steps}")
+            
+    print("Training complete.")
+    
+    # Save the trained model
+    model_path = f"./{run.name}_model.pth"
+    torch.save(policy_net.state_dict(), model_path)
+    # ## WANDB ## Save model to wandb
+    wandb.save(model_path)
+    
+    # Close environment
+    env.close()
+    
+    # Run tests
+    test_agent(policy_net, config, run)
+    
+    # ## WANDB ## Finish the run
+    run.finish()
+
+
+### 📊 Step 7 & 9: Test Runs & Video Recording
+#This function runs the trained agent and logs the test results to the *same* W&B run. It also handles recording a video for one of the test runs.
+
+def test_agent(trained_policy_net, config, run):
+    """Run the trained agent 100 times and record a video."""
+    print("Starting testing...")
+    
+    # --- Video Recording Setup (Step 9) ---
+    # Create a new environment, wrapping it with RecordVideo
+    # This will record one video of the first test episode
+    video_env = gym.make(config.ENV_NAME, render_mode="rgb_array")
+    video_env = gym.wrappers.RecordVideo(
+        video_env, 
+        video_folder=f"./videos/{run.name}", 
+        episode_trigger=lambda e: e == 0 # Record only the first episode
+    )
+    
+    # --- Standard Test Setup ---
+    # Create a separate environment for the other 99 tests
+    test_env = gym.make(config.ENV_NAME)
+    
+    n_actions = test_env.action_space.n
+    test_episode_durations = []
+
+    for i in range(100):
+        # Use the correct env (video env for first ep, test env for others)
+        env_to_use = video_env if i == 0 else test_env
+        
+        state, info = env_to_use.reset()
+        state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
+        
+        terminated = False
+        truncated = False
+        duration = 0
+        
+        while not (terminated or truncated):
+            duration += 1
+            # Run the agent with epsilon = 0 (pure exploitation)
+            action = select_action(state, trained_policy_net, n_actions, epsilon=0.0)
+            observation, reward, terminated, truncated, _ = env_to_use.step(action.item())
+
+            if terminated or truncated:
+                break
+            else:
+                state = torch.tensor(observation, dtype=torch.float32, device=device).unsqueeze(0)
+        
+        test_episode_durations.append(duration)
+        
+    # Close environments
+    video_env.close()
+    test_env.close()
+    
+    # Log results to W&B
+    avg_duration = np.mean(test_episode_durations)
+    std_duration = np.std(test_episode_durations)
+    print(f"Testing complete. Avg Duration: {avg_duration:.2f} +/- {std_duration:.2f}")
+
+    # ## WANDB ## Log test statistics
+    wandb.log({
+        "test_avg_duration": avg_duration,
+        "test_std_duration": std_duration,
+        # Create a histogram of test durations
+        "test_durations_hist": wandb.Histogram(test_episode_durations)
+    })
+    
+    # ## WANDB ## Log the recorded video
+    wandb.log({"video": wandb.Video(f"./videos/{run.name}/rl-video-episode-0.mp4", fps=4, format="mp4")})
+    
+    
+
+if __name__ == "__main__":
+    
+    # --- Step 8: Hyperparameter Setups ---
+    # You can define multiple configs and loop through them
+    
+    base_config = {
+        "LR": 1e-4,                 # NN Learning Rate
+        "BATCH_SIZE": 128,          # Learning Batch Size
+        "MEMORY_SIZE": 10000,       # Replay Memory Size
+        "GAMMA": 0.99,              # Discount Factor
+        "EPS_START": 0.9,
+        "EPS_END": 0.05,
+        "EPS_DECAY": 10000,         # Epsilon Decay Rate (in total steps)
+        "TAU": 0.005,               # Target network update rate (for soft update)
+        "NUM_EPISODES": 600,        # Total training episodes
+        "MAX_STEPS_PER_EPISODE": 2000 # Max steps before truncation
+    }
+    
+    # --- Experiment 1: CartPole DQN ---
+    config_cartpole_dqn = base_config.copy()
+    config_cartpole_dqn.update({
+        "ENV_NAME": "CartPole-v1",
+        "USE_DDQN": False,
+        "MAX_STEPS_PER_EPISODE": 500 # CartPole-v1 is solved at 500 steps
+    })
+    train(config_cartpole_dqn)
+    
+    # --- Experiment 2: CartPole DDQN ---
+    config_cartpole_ddqn = base_config.copy()
+    config_cartpole_ddqn.update({
+        "ENV_NAME": "CartPole-v1",
+        "USE_DDQN": True,
+        "MAX_STEPS_PER_EPISODE": 500
+    })
+    train(config_cartpole_ddqn)
+    
+    # --- Experiment 3: Acrobot DDQN ---
+    # Note: Acrobot is harder and may need more episodes/tuning
+    config_acrobot_ddqn = base_config.copy()
+    config_acrobot_ddqn.update({
+        "ENV_NAME": "Acrobot-v1",
+        "USE_DDQN": True,
+        "NUM_EPISODES": 1000,
+        "MAX_STEPS_PER_EPISODE": 500
+    })
+    # train(config_acrobot_ddqn) # Uncomment to run
+    
+    # --- Experiment 4: MountainCar DDQN ---
+    # Note: MountainCar needs careful reward shaping or many episodes
+    # The default reward of -1 per step makes it hard to learn
+    config_mountaincar_ddqn = base_config.copy()
+    config_mountaincar_ddqn.update({
+        "ENV_NAME": "MountainCar-v0",
+        "USE_DDQN": True,
+        "NUM_EPISODES": 2000,
+        "EPS_DECAY": 50000, # Slower decay
+        "MAX_STEPS_PER_EPISODE": 200 # Env default
+    })
+    # train(config_mountaincar_ddqn) # Uncomment to run
+
+    # Note on Pendulum-v1:
+    # Pendulum has a CONTINUOUS action space.
+    # DQN/DDQN are for DISCRETE action spaces.
+    # To solve Pendulum, you need a different algorithm like DDPG or TD3.
+    # Please check with your instructor if you are expected to solve Pendulum
+    # with DQN (which would require discretizing the action space).
