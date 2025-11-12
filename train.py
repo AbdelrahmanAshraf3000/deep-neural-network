@@ -11,7 +11,7 @@ from collections import namedtuple, deque
 import time
 import numpy as np
 from DiscretizedPendulumWrapper import DiscretizedPendulumWrapper
-
+import os
 # Import the classes we just defined
 from model import QNetwork
 from replay_memory import ReplayMemory, Transition
@@ -309,9 +309,22 @@ def test_agent(trained_policy_net, config, run):
     })
     
     # ## WANDB ## Log the recorded video
-    for e in range(10):
-        video_path = f"./videos/{run.name}/rl-video-episode-{e * 10}.mp4"
-        wandb.log({f"test_video_episode_{e * 10}": wandb.Video(video_path, caption=f"Test Episode {e * 10}", fps=4, format="mp4")})
+    video_folder = f"./videos/{run.name}"
+
+    # Try logging only existing files
+    for e in range(0, 100, 10):  # every 10 episodes
+        video_path = os.path.join(video_folder, f"rl-video-episode-{e}.mp4")
+        if os.path.exists(video_path):
+            wandb.log({
+                f"test_video_episode_{e}": wandb.Video(
+                    video_path, 
+                    caption=f"Test Episode {e}", 
+                    format="mp4"
+                )
+            })
+        else:
+            print(f"[WARN] Video not found for episode {e}: {video_path}")
+
     
     
 
