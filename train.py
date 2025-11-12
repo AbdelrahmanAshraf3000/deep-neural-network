@@ -1,3 +1,4 @@
+# train.py
 import gymnasium as gym
 import math
 import random
@@ -9,6 +10,7 @@ import torch.nn.functional as F
 from collections import namedtuple, deque
 import time
 import numpy as np
+from DiscretizedPendulumWrapper import DiscretizedPendulumWrapper
 
 # Import the classes we just defined
 from model import QNetwork
@@ -110,8 +112,12 @@ def train(config):
     # Get configuration from wandb object
     config = wandb.config
 
-    # Create the environment
-    env = gym.make(config.ENV_NAME)
+
+    if config["ENV_NAME"] == "Pendulum-v1":
+        env = DiscretizedPendulumWrapper(gym.make("Pendulum-v1"))
+    else:
+        env = gym.make(config["ENV_NAME"])
+
     
     # Get state and action space dimensions
     n_observations = env.observation_space.shape[0]
@@ -240,7 +246,11 @@ def test_agent(trained_policy_net, config, run):
     
     # --- Standard Test Setup ---
     # Create a separate environment for the other 99 tests
-    test_env = gym.make(config.ENV_NAME)
+    if config["ENV_NAME"] == "Pendulum-v1":
+        test_env = DiscretizedPendulumWrapper(gym.make("Pendulum-v1"))
+    else:
+        test_env = gym.make(config["ENV_NAME"])
+
     
     n_actions = test_env.action_space.n
     test_episode_durations = []
@@ -292,68 +302,134 @@ def test_agent(trained_policy_net, config, run):
     
 
 if __name__ == "__main__":
-    
-    # --- Step 8: Hyperparameter Setups ---
-    # You can define multiple configs and loop through them
-    
+    import wandb
+    wandb.login()  # optional, for W&B logging
+
+    # --- Base configuration template ---
     base_config = {
-        "LR": 1e-4,                 # NN Learning Rate
-        "BATCH_SIZE": 128,          # Learning Batch Size
-        "MEMORY_SIZE": 10000,       # Replay Memory Size
-        "GAMMA": 0.99,              # Discount Factor
-        "EPS_START": 0.9,
+        "LR": 1e-4,
+        "BATCH_SIZE": 128,
+        "MEMORY_SIZE": 10000,
+        "GAMMA": 0.99,
+        "EPS_START": 1.0,
         "EPS_END": 0.05,
-        "EPS_DECAY": 10000,         # Epsilon Decay Rate (in total steps)
-        "TAU": 0.005,               # Target network update rate (for soft update)
-        "NUM_EPISODES": 600,        # Total training episodes
-        "MAX_STEPS_PER_EPISODE": 2000 # Max steps before truncation
+        "EPS_DECAY": 20000,
+        "TAU": 0.005,
+        "NUM_EPISODES": 600,
+        "MAX_STEPS_PER_EPISODE": 1000,
     }
-    
-    # --- Experiment 1: CartPole DQN ---
+
+    # ------------------------------------------------------------------
+    #  CartPole-v1 — DQN
+    # ------------------------------------------------------------------
     config_cartpole_dqn = base_config.copy()
     config_cartpole_dqn.update({
         "ENV_NAME": "CartPole-v1",
         "USE_DDQN": False,
-        "MAX_STEPS_PER_EPISODE": 500 # CartPole-v1 is solved at 500 steps
+        "LR": 1e-3,
+        "EPS_DECAY": 5000,
+        "NUM_EPISODES": 400,
+        "MAX_STEPS_PER_EPISODE": 500,
     })
     train(config_cartpole_dqn)
-    
-    # --- Experiment 2: CartPole DDQN ---
+
+    # ------------------------------------------------------------------
+    #  CartPole-v1 — DDQN
+    # ------------------------------------------------------------------
     config_cartpole_ddqn = base_config.copy()
     config_cartpole_ddqn.update({
         "ENV_NAME": "CartPole-v1",
         "USE_DDQN": True,
-        "MAX_STEPS_PER_EPISODE": 500
+        "LR": 5e-4,
+        "EPS_DECAY": 8000,
+        "NUM_EPISODES": 400,
+        "MAX_STEPS_PER_EPISODE": 500,
     })
     train(config_cartpole_ddqn)
-    
-    # --- Experiment 3: Acrobot DDQN ---
-    # Note: Acrobot is harder and may need more episodes/tuning
+
+    # ------------------------------------------------------------------
+    #  Acrobot-v1 — DQN
+    # ------------------------------------------------------------------
+    config_acrobot_dqn = base_config.copy()
+    config_acrobot_dqn.update({
+        "ENV_NAME": "Acrobot-v1",
+        "USE_DDQN": False,
+        "LR": 1e-3,
+        "EPS_DECAY": 25000,
+        "NUM_EPISODES": 1200,
+        "MAX_STEPS_PER_EPISODE": 500,
+    })
+    train(config_acrobot_dqn)
+
+    # ------------------------------------------------------------------
+    #  Acrobot-v1 — DDQN
+    # ------------------------------------------------------------------
     config_acrobot_ddqn = base_config.copy()
     config_acrobot_ddqn.update({
         "ENV_NAME": "Acrobot-v1",
         "USE_DDQN": True,
-        "NUM_EPISODES": 1000,
-        "MAX_STEPS_PER_EPISODE": 500
+        "LR": 1e-3,
+        "EPS_DECAY": 30000,
+        "NUM_EPISODES": 1500,
+        "MAX_STEPS_PER_EPISODE": 500,
     })
-    # train(config_acrobot_ddqn) # Uncomment to run
-    
-    # --- Experiment 4: MountainCar DDQN ---
-    # Note: MountainCar needs careful reward shaping or many episodes
-    # The default reward of -1 per step makes it hard to learn
+    train(config_acrobot_ddqn)
+
+    # ------------------------------------------------------------------
+    #  MountainCar-v0 — DQN
+    # ------------------------------------------------------------------
+    config_mountaincar_dqn = base_config.copy()
+    config_mountaincar_dqn.update({
+        "ENV_NAME": "MountainCar-v0",
+        "USE_DDQN": False,
+        "LR": 1e-3,
+        "EPS_DECAY": 60000,              # slower decay = more exploration
+        "NUM_EPISODES": 2500,
+        "MAX_STEPS_PER_EPISODE": 200,
+        "BATCH_SIZE": 256,
+    })
+    train(config_mountaincar_dqn)
+
+    # ------------------------------------------------------------------
+    #  MountainCar-v0 — DDQN
+    # ------------------------------------------------------------------
     config_mountaincar_ddqn = base_config.copy()
     config_mountaincar_ddqn.update({
         "ENV_NAME": "MountainCar-v0",
         "USE_DDQN": True,
-        "NUM_EPISODES": 2000,
-        "EPS_DECAY": 50000, # Slower decay
-        "MAX_STEPS_PER_EPISODE": 200 # Env default
+        "LR": 1e-3,
+        "EPS_DECAY": 80000,
+        "NUM_EPISODES": 3000,
+        "MAX_STEPS_PER_EPISODE": 200,
+        "BATCH_SIZE": 256,
     })
-    # train(config_mountaincar_ddqn) # Uncomment to run
+    train(config_mountaincar_ddqn)
 
-    # Note on Pendulum-v1:
-    # Pendulum has a CONTINUOUS action space.
-    # DQN/DDQN are for DISCRETE action spaces.
-    # To solve Pendulum, you need a different algorithm like DDPG or TD3.
-    # Please check with your instructor if you are expected to solve Pendulum
-    # with DQN (which would require discretizing the action space).
+    # ------------------------------------------------------------------
+    # Pendulum-v1 — DQN (discretized)
+    # ------------------------------------------------------------------
+    config_pendulum_dqn = base_config.copy()
+    config_pendulum_dqn.update({
+        "ENV_NAME": "Pendulum-v1",
+        "USE_DDQN": False,
+        "LR": 5e-4,
+        "EPS_DECAY": 40000,
+        "NUM_EPISODES": 1200,
+        "MAX_STEPS_PER_EPISODE": 200,
+    })
+    train(config_pendulum_dqn)
+
+    # ------------------------------------------------------------------
+    # Pendulum-v1 — DDQN (discretized)
+    # ------------------------------------------------------------------
+    config_pendulum_ddqn = base_config.copy()
+    config_pendulum_ddqn.update({
+        "ENV_NAME": "Pendulum-v1",
+        "USE_DDQN": True,
+        "LR": 5e-4,
+        "EPS_DECAY": 50000,
+        "NUM_EPISODES": 1500,
+        "MAX_STEPS_PER_EPISODE": 200,
+    })
+    train(config_pendulum_ddqn)
+
