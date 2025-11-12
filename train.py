@@ -238,34 +238,32 @@ def test_agent(trained_policy_net, config, run):
     # Create a new environment, wrapping it with RecordVideo
     # This will record one video of the first test episode
     # --- Video Recording Setup ---
+
+    # --- Ensure video directory exists ---
+    os.makedirs(f"./videos/{run.name}", exist_ok=True)
+
+    # --- Create and wrap environment ---
     if config["ENV_NAME"] == "Pendulum-v1":
-        base_env = DiscretizedPendulumWrapper(gym.make("Pendulum-v1", render_mode="rgb_array"))
+        base_env = DiscretizedPendulumWrapper(
+            gym.make("Pendulum-v1", render_mode="rgb_array")
+        )
     else:
         base_env = gym.make(config["ENV_NAME"], render_mode="rgb_array")
 
     video_env = gym.wrappers.RecordVideo(
         base_env,
         video_folder=f"./videos/{run.name}",
-        episode_trigger=lambda e: e % 10 == 0  # Record every 10 episodes
+        episode_trigger=lambda e: e % 10 == 0  # record every 10th episode
     )
 
-    # --- Standard Test Setup ---
-    if config["ENV_NAME"] == "Pendulum-v1":
-        test_env = DiscretizedPendulumWrapper(gym.make("Pendulum-v1"))
-    else:
-        test_env = gym.make(config["ENV_NAME"])
-
-
-    
-    n_actions = test_env.action_space.n
+    n_actions = video_env.action_space.n
     test_episode_durations = []
     test_rewards = []
 
     for i in range(100):
-        # Use the correct env (video env for first ep, test env for others)
-        env_to_use = video_env if i == 0 else test_env
+
         
-        state, info = env_to_use.reset()
+        state, info = video_env.reset()
         state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
         
         terminated = False
@@ -277,7 +275,7 @@ def test_agent(trained_policy_net, config, run):
             duration += 1
             # Run the agent with epsilon = 0 (pure exploitation)
             action = select_action(state, trained_policy_net, n_actions, epsilon=0.0)
-            observation, reward, terminated, truncated, _ = env_to_use.step(action.item())
+            observation, reward, terminated, truncated, _ = video_env.step(action.item())
             episode_reward += reward
             
             if terminated or truncated:
@@ -290,7 +288,6 @@ def test_agent(trained_policy_net, config, run):
         
     # Close environments
     video_env.close()
-    test_env.close()
     
     # Log results to W&B
     avg_duration = np.mean(test_episode_durations)
