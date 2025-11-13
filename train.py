@@ -1,4 +1,3 @@
-# train.py
 import gymnasium as gym
 import math
 import random
@@ -12,12 +11,9 @@ import time
 import numpy as np
 from DiscretizedPendulumWrapper import DiscretizedPendulumWrapper
 import os
-# Import the classes we just defined
 from model import QNetwork
 from replay_memory import ReplayMemory, Transition
-
-# Import wandb
-import wandb # ## WANDB ##
+import wandb 
 
 # Set up device (use GPU if available, otherwise CPU)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -30,7 +26,6 @@ def select_action(state, policy_net, n_actions, epsilon):
     if sample > epsilon:
         # Exploitation: Choose the best action from the Q-network
         with torch.no_grad():
-            # .max(1) returns (values, indices)
             return policy_net(state).max(1)[1].view(1, 1)
     else:
         # Exploration: Choose a random action
@@ -211,6 +206,7 @@ def train(config):
     # Save the trained model
     model_path = f"./{run.name}_model.pth"
     torch.save(policy_net.state_dict(), model_path)
+    
     # ## WANDB ## Save model to wandb
     #wandb.save(model_path)
     
@@ -224,17 +220,12 @@ def train(config):
     run.finish()
 
 
-### 📊 Step 7 & 9: Test Runs & Video Recording
-#This function runs the trained agent and logs the test results to the *same* W&B run. It also handles recording a video for one of the test runs.
+
 
 def test_agent(trained_policy_net, config, run):
     """Run the trained agent 100 times and record a video."""
     print("Starting testing...")
     
-    # --- Video Recording Setup (Step 9) ---
-    # Create a new environment, wrapping it with RecordVideo
-    # This will record one video of the first test episode
-    # --- Video Recording Setup ---
 
     # --- Ensure video directory exists ---
     os.makedirs(f"./videos/{run.name}", exist_ok=True)
@@ -326,7 +317,7 @@ def test_agent(trained_policy_net, config, run):
     
 
 if __name__ == "__main__":
-    wandb.login()  # optional, for W&B logging
+    wandb.login()  
 
     # --- Base configuration template ---
     base_config = {
@@ -355,7 +346,7 @@ if __name__ == "__main__":
         "MAX_STEPS_PER_EPISODE": 500,
     })
     train(config_cartpole_dqn)
-    #test was working fine
+    
 
     # # ------------------------------------------------------------------
     # #  CartPole-v1 — DDQN
@@ -370,7 +361,7 @@ if __name__ == "__main__":
     #     "MAX_STEPS_PER_EPISODE": 500,
     # })
     # train(config_cartpole_ddqn)
-    # #test was so bad
+    
 
     # # ------------------------------------------------------------------
     # #  Acrobot-v1 — DQN
@@ -385,7 +376,7 @@ if __name__ == "__main__":
     #     "MAX_STEPS_PER_EPISODE": 500,
     # })
     # train(config_acrobot_dqn)
-    # #test was good
+    
 
     # # ------------------------------------------------------------------
     # #  Acrobot-v1 — DDQN
@@ -400,7 +391,7 @@ if __name__ == "__main__":
     #     "MAX_STEPS_PER_EPISODE": 500,
     # })
     # train(config_acrobot_ddqn)
-    # #test was better
+ 
 
     # # ------------------------------------------------------------------
     # #  MountainCar-v0 — DQN
@@ -416,7 +407,7 @@ if __name__ == "__main__":
     #     "BATCH_SIZE": 256,
     # })
     # train(config_mountaincar_dqn)
-    # # test was good
+    
 
     # # ------------------------------------------------------------------
     # #  MountainCar-v0 — DDQN
@@ -432,7 +423,7 @@ if __name__ == "__main__":
     #     "BATCH_SIZE": 256,
     # })
     # train(config_mountaincar_ddqn)
-    # #not enough time to test
+
 
     # # ------------------------------------------------------------------
     # # Pendulum-v1 — DQN (discretized)
