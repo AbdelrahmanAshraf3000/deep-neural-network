@@ -1,0 +1,7 @@
+torch
+gymnasium
+wandb
+numpy
+matplotlib
+python-dotenv
+moviepy

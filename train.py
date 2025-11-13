@@ -99,14 +99,14 @@ def train(config):
     run = wandb.init(
         project="rl-classic-control", 
         config=config,
-        name=f"{config.ENV_NAME}_{'DDQN' if config.USE_DDQN else 'DQN'}_{time.strftime('%Y%m%d-%H%M%S')}"
+        name=f"{config['ENV_NAME']}_{'DDQN' if config['USE_DDQN'] else 'DQN'}_{time.strftime('%Y%m%d-%H%M%S')}"
     )
     
     # Get configuration from wandb object
     config = wandb.config
 
 
-    if config["ENV_NAME"] == "Pendulum-v1":
+    if config.ENV_NAME == "Pendulum-v1":
         env = DiscretizedPendulumWrapper(gym.make("Pendulum-v1",render_mode="rgb_array"))
     else:
         env = gym.make(config.ENV_NAME,render_mode="rgb_array")
