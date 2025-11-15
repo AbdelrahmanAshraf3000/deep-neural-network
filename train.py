@@ -89,6 +89,10 @@ def optimize_model(memory, policy_net, target_net, optimizer, config):
 
 def train(config):
     """Main training loop."""
+    from types import SimpleNamespace
+    if isinstance(config, dict):
+        config = SimpleNamespace(**config)
+
     
     # ## WANDB ## Initialize a new run
     run = wandb.init(
@@ -323,7 +327,7 @@ if __name__ == "__main__":
     base_config = {
         "LR": 1e-4,
         "BATCH_SIZE": 128,
-        "MEMORY_SIZE": 10000,
+        "MEMORY_SIZE": 20000,
         "GAMMA": 0.99,
         "EPS_START": 1.0,
         "EPS_END": 0.05,
@@ -333,34 +337,34 @@ if __name__ == "__main__":
         "MAX_STEPS_PER_EPISODE": 1000,
     }
 
-    # ------------------------------------------------------------------
-    #  CartPole-v1 — DQN    
-    # ------------------------------------------------------------------
-    config_cartpole_dqn = base_config.copy()
-    config_cartpole_dqn.update({
-        "ENV_NAME": "CartPole-v1",
-        "USE_DDQN": False,
-        "LR": 1e-3,
-        "EPS_DECAY": 5000,
-        "NUM_EPISODES": 400,
-        "MAX_STEPS_PER_EPISODE": 500,
-    })
-    train(config_cartpole_dqn)
+    # # ------------------------------------------------------------------
+    # #  CartPole-v1 — DQN    
+    # # ------------------------------------------------------------------
+    # config_cartpole_dqn = base_config.copy()
+    # config_cartpole_dqn.update({
+    #     "ENV_NAME": "CartPole-v1",
+    #     "USE_DDQN": False,
+    #     "LR": 1e-3,
+    #     "EPS_DECAY": 5000,
+    #     "NUM_EPISODES": 500,
+    #     "MAX_STEPS_PER_EPISODE": 500,
+    # })
+    # train(config_cartpole_dqn)  #successful with avg reward = 500
     
 
-    # # ------------------------------------------------------------------
-    # #  CartPole-v1 — DDQN
-    # # ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    #  CartPole-v1 — DDQN
+    # ------------------------------------------------------------------
     # config_cartpole_ddqn = base_config.copy()
     # config_cartpole_ddqn.update({
     #     "ENV_NAME": "CartPole-v1",
     #     "USE_DDQN": True,
     #     "LR": 5e-4,
     #     "EPS_DECAY": 8000,
-    #     "NUM_EPISODES": 400,
+    #     "NUM_EPISODES": 500,
     #     "MAX_STEPS_PER_EPISODE": 500,
     # })
-    # train(config_cartpole_ddqn)
+    # train(config_cartpole_ddqn)  #successful with avg reward = 500
     
 
     # # ------------------------------------------------------------------
@@ -393,25 +397,26 @@ if __name__ == "__main__":
     # train(config_acrobot_ddqn)
  
 
-    # # ------------------------------------------------------------------
-    # #  MountainCar-v0 — DQN
-    # # ------------------------------------------------------------------
-    # config_mountaincar_dqn = base_config.copy()
-    # config_mountaincar_dqn.update({
-    #     "ENV_NAME": "MountainCar-v0",
-    #     "USE_DDQN": False,
-    #     "LR": 1e-3,
-    #     "EPS_DECAY": 60000,              # slower decay = more exploration
-    #     "NUM_EPISODES": 2500,
-    #     "MAX_STEPS_PER_EPISODE": 200,
-    #     "BATCH_SIZE": 256,
-    # })
-    # train(config_mountaincar_dqn)
+    # ------------------------------------------------------------------
+    #  MountainCar-v0 — DQN
+    # ------------------------------------------------------------------
+    config_mountaincar_dqn = base_config.copy()
+    config_mountaincar_dqn.update({
+        "ENV_NAME": "MountainCar-v0",
+        "USE_DDQN": False,
+        "LR": 5e-4,
+        "EPS_DECAY": 500000,              # slower decay = more exploration
+        "NUM_EPISODES": 2500,
+        "MEMORY_SIZE": 100000,
+        "MAX_STEPS_PER_EPISODE": 200,
+        "BATCH_SIZE": 256,
+    })
+    train(config_mountaincar_dqn)
     
 
-    # # ------------------------------------------------------------------
-    # #  MountainCar-v0 — DDQN
-    # # ------------------------------------------------------------------
+    # # # ------------------------------------------------------------------
+    # # #  MountainCar-v0 — DDQN
+    # # # ------------------------------------------------------------------
     # config_mountaincar_ddqn = base_config.copy()
     # config_mountaincar_ddqn.update({
     #     "ENV_NAME": "MountainCar-v0",
